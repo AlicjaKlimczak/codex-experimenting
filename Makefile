@@ -5,7 +5,7 @@ LIBS = -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
 
 SRCDIR = src
 OBJDIR = obj
-SOURCES = $(SRCDIR)/main.cpp $(SRCDIR)/textadventure.cpp $(SRCDIR)/room.cpp
+SOURCES = $(SRCDIR)/main.cpp $(SRCDIR)/textadventure.cpp $(SRCDIR)/room.cpp $(SRCDIR)/room_factory.cpp
 OBJECTS = $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
 TARGET = retro_dungeon
 

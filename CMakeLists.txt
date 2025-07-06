@@ -10,6 +10,7 @@ add_executable(retro_dungeon
     src/main.cpp
     src/textadventure.cpp
     src/room.cpp
+    src/room_factory.cpp
 )
 
 target_link_libraries(retro_dungeon raylib)

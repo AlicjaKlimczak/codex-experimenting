@@ -1,10 +1,12 @@
 #include "textadventure.h"
+#include "room_factory.h"
 #include <algorithm>
 #include <iostream>
 #include <cmath>
 
-TextAdventure::TextAdventure() : currentRoom(nullptr), playerHealth(100), basePlayerAttack(3), basePlayerArmor(1), equippedWeaponIndex(-1), equippedArmorIndex(-1), playerRoomX(12.0f), playerRoomY(9.0f), playerSpeed(4.0f), isFemale(false), moveTimer(0.0f), walkAnimFrame(0), animTimer(0.0f), isWalking(false), chatScrollOffset(0), bookTaken(false), scrollTaken(false), mapUnlocked(false), infirmaryRevealed(false), inMapView(false), hasKey(false), gemUsed(false), hasTeleport(false), strangeMet(false) {
+TextAdventure::TextAdventure() : currentRoom(nullptr), playerHealth(100), basePlayerAttack(3), basePlayerArmor(1), equippedWeaponIndex(-1), equippedArmorIndex(-1), playerRoomX(12.0f), playerRoomY(9.0f), playerSpeed(4.0f), isFemale(false), moveTimer(0.0f), walkAnimFrame(0), animTimer(0.0f), isWalking(false), chatScrollOffset(0), bookTaken(false), scrollTaken(false), mapUnlocked(false), infirmaryRevealed(false), inMapView(false), hasKey(false), gemUsed(false), hasTeleport(false), strangeMet(false), noteRead(false), hasStaff(false), hasDiamond(false), hasEmerald(false), hasOpal(false), staffComplete(false), gameEnding(false), shouldQuit(false), waitingForContinue(false), endingPhase(0), endingTimer(0.0f) {
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Retro Dungeon - Text Adventure");
+    SetExitKey(-1); // Disable ESC key from closing the window
     SetTargetFPS(60);
     
     // Character selection
@@ -23,7 +25,7 @@ TextAdventure::~TextAdventure() {
 }
 
 void TextAdventure::Run() {
-    while (!WindowShouldClose()) {
+    while (!shouldQuit && !WindowShouldClose()) {
         Update();
         Draw();
     }
@@ -34,6 +36,21 @@ void TextAdventure::Update() {
     
     moveTimer += GetFrameTime();
     animTimer += GetFrameTime();
+    
+    // Handle ending sequence transitions
+    if (endingPhase > 0) {
+        endingTimer += GetFrameTime();
+        
+        // Transition every 1.5 seconds
+        if (endingTimer >= 1.5f) {
+            endingPhase++;
+            endingTimer = 0.0f;
+            
+            if (endingPhase > 5) {
+                endingPhase = 5; // Stay at game over
+            }
+        }
+    }
     
     // Walking animation - cycle through frames (much slower, each pose held longer)
     if (isWalking && animTimer >= 0.4f) {
@@ -344,6 +361,38 @@ void TextAdventure::ExecuteCommand(const std::string& command) {
                 AddMessage("You hear a distant clicking sound from somewhere in the dungeon!");
                 AddMessage("The armory door to the east has been unlocked!");
             }
+            else if (itemName == "gem") {
+                AddMessage("You take the sparkling ruby. Its inner light pulses mysteriously.");
+                AddMessage("This gem seems special... perhaps it belongs somewhere significant like a throne room?");
+            }
+            else if (itemName == "staff") {
+                AddMessage("You take the ancient wooden staff. The runes along its surface begin to glow faintly.");
+                AddMessage("This feels like an incredibly powerful artifact. You sense it was once whole...");
+                hasStaff = true;
+            }
+            else if (itemName == "diamond") {
+                AddMessage("You take the flawless diamond. It resonates with pure, brilliant energy.");
+                AddMessage("This diamond seems to be part of something greater...");
+                hasDiamond = true;
+            }
+            else if (itemName == "emerald") {
+                AddMessage("You take the brilliant emerald. It pulses with vibrant green light.");
+                AddMessage("You feel nature's power flowing through this gem...");
+                hasEmerald = true;
+            }
+            else if (itemName == "opal") {
+                AddMessage("You take the shimmering opal. It shifts through all colors of the rainbow.");
+                AddMessage("This opal seems to contain the essence of all elements...");
+                hasOpal = true;
+            }
+            
+            // Check if all staff parts are collected
+            if (hasStaff && hasDiamond && hasEmerald && hasOpal && !staffComplete) {
+                AddMessage("");
+                AddMessage("The four artifacts resonate with each other in your inventory!");
+                AddMessage("The staff parts seem to be calling out to be reunited...");
+                AddMessage("You sense you can now 'combine' them to restore the ancient staff!");
+            }
             else {
                 AddMessage("You take the " + itemName + ".");
             }
@@ -391,8 +440,49 @@ void TextAdventure::ExecuteCommand(const std::string& command) {
             AddMessage("You need to take a better look in the library.");
         }
     }
+    else if (verb == "combine") {
+        // Check if all staff parts are collected
+        if (hasStaff && hasDiamond && hasEmerald && hasOpal && !staffComplete) {
+            // Remove individual parts from inventory
+            for (auto it = inventory.begin(); it != inventory.end(); ) {
+                if (it->name == "staff" || it->name == "diamond" || it->name == "emerald" || it->name == "opal") {
+                    it = inventory.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+            
+            // Add the complete staff to inventory
+            inventory.push_back(Item("?????", "The Ancient Staff of Power, now fully restored with all three gems embedded in its head. It pulses with magical energy.", true, ItemType::WEAPON, 25, 0));
+            
+            // Set completion flag
+            staffComplete = true;
+            
+            // Victory message
+            AddMessage("The staff parts resonate with ancient power as you bring them together!");
+            AddMessage("The diamond, emerald, and opal float from your hands and embed themselves into the staff head.");
+            AddMessage("Light erupts from the completed staff as its true power is unleashed!");
+            AddMessage("You now wield the Ancient Staff of Power! (+25 attack)");
+            AddMessage("The way forward is now clear...");
+            
+        } else if (staffComplete) {
+            AddMessage("The staff is already complete and pulsing with power.");
+        } else {
+            AddMessage("You need to collect all the staff parts first:");
+            AddMessage("- The wooden staff");
+            AddMessage("- The diamond gem");
+            AddMessage("- The emerald gem");
+            AddMessage("- The opal gem");
+        }
+    }
+    else if (verb == "continue" && waitingForContinue) {
+        AddMessage("The world begins to change...");
+        waitingForContinue = false;
+        endingPhase = 1; // Start visual transition
+    }
     else if (verb == "quit") {
         AddMessage("Thanks for playing!");
+        shouldQuit = true;
     }
     else {
         AddMessage("I don't understand that command.");
@@ -410,6 +500,51 @@ void TextAdventure::Draw() {
     }
     DrawTextPanel();
     DrawPlayerStats();
+    
+    // Handle ending visual effects over the room area
+    if (endingPhase > 0) {
+        Color overlayColor = {0, 0, 0, 0};
+        
+        switch (endingPhase) {
+            case 1: // White
+                overlayColor = {255, 255, 255, 200};
+                break;
+            case 2: // Yellow
+                overlayColor = {255, 255, 0, 220};
+                break;
+            case 3: // Red
+                overlayColor = {255, 0, 0, 240};
+                break;
+            case 4: // Black
+                overlayColor = {0, 0, 0, 255};
+                break;
+            case 5: // Game Over
+                overlayColor = {0, 0, 0, 255};
+                // Draw game over text in the room area
+                DrawRectangle(0, 0, MAP_WIDTH, SCREEN_HEIGHT, {0, 0, 0, 255});
+                
+                int gameOverY = SCREEN_HEIGHT / 2 - 50;
+                DrawText("GAME OVER", MAP_WIDTH / 2 - 120, gameOverY, 48, {255, 255, 255, 255});
+                
+                DrawText("You have discovered the terrible truth of the Ancient Staff.", 
+                         50, gameOverY + 80, 20, {200, 200, 200, 255});
+                DrawText("Its power was never meant to be unleashed upon the world.", 
+                         50, gameOverY + 110, 20, {200, 200, 200, 255});
+                DrawText("The wizard who broke it was trying to save everyone...", 
+                         50, gameOverY + 140, 20, {200, 200, 200, 255});
+                DrawText("But it's too late now.", 
+                         50, gameOverY + 170, 20, {200, 200, 200, 255});
+                
+                DrawText("Type 'quit' to exit.", 
+                         50, gameOverY + 220, 24, {255, 255, 100, 255});
+                break;
+        }
+        
+        // Draw overlay for phases 1-4
+        if (endingPhase >= 1 && endingPhase <= 4) {
+            DrawRectangle(0, 0, MAP_WIDTH, SCREEN_HEIGHT, overlayColor);
+        }
+    }
     
     EndDrawing();
 }
@@ -588,6 +723,12 @@ void TextAdventure::DrawRoomLayout(Room* room) {
                     floorColor = {96, 96, 112, 255}; // Light blue-gray for medical room
                 } else if (roomName == "Dark Room") {
                     floorColor = {32, 32, 48, 255}; // Very dark blue-gray for mysterious room
+                } else if (roomName == "Sunlit Meadow") {
+                    floorColor = {144, 238, 144, 255}; // Light green for meadow
+                } else if (roomName == "Chapel") {
+                    floorColor = {96, 96, 112, 255}; // Stone gray for sacred space
+                } else if (roomName == "Sleeping Quarters") {
+                    floorColor = {112, 96, 80, 255}; // Warm wood tone for bedrooms
                 } else {
                     floorColor = {96, 80, 64, 255};
                 }
@@ -1270,6 +1411,153 @@ void TextAdventure::DrawRoomLayout(Room* room) {
         DrawRectangle(tableX + 8, tableY + 4, 12, 8, {200, 200, 200, 255}); // Bandages
         DrawRectangle(tableX + 24, tableY + 8, 8, 12, {150, 75, 0, 255}); // Medicine bottle
         DrawRectangle(tableX + 36, tableY + 6, 16, 6, {255, 255, 200, 255}); // Plaster/healing cloth
+    } else if (roomName == "Sunlit Meadow") {
+        // Dungeon exit at the top center of the room
+        int exitX = startX + (TILE_SIZE * 11);
+        int exitY = startY + (TILE_SIZE * 1);
+        DrawRectangle(exitX, exitY, TILE_SIZE * 2, 20, {139, 69, 19, 255}); // Brown wooden door
+        DrawRectangle(exitX + 8, exitY + 6, 8, 8, {160, 82, 45, 255}); // Door handle
+        DrawRectangleLines(exitX, exitY, TILE_SIZE * 2, 20, {101, 67, 33, 255}); // Door outline
+        
+        // Flowers with centers and simple stems
+        for (int i = 0; i < 8; i++) {
+            int flowerX = startX + (TILE_SIZE * (3 + (i * 2) % 18));
+            int flowerY = startY + (TILE_SIZE * (4 + (i * 3) % 10));
+            
+            Color flowerColors[] = {
+                {255, 100, 100, 255}, // Red
+                {255, 255, 100, 255}, // Yellow
+                {100, 150, 255, 255}, // Blue
+                {255, 150, 200, 255}  // Pink
+            };
+            Color flowerColor = flowerColors[i % 4];
+            
+            // Flower head with center
+            DrawRectangle(flowerX, flowerY, 16, 16, flowerColor);
+            DrawRectangle(flowerX + 4, flowerY + 4, 8, 8, {255, 255, 0, 255}); // Yellow center
+            DrawRectangleLines(flowerX, flowerY, 16, 16, {200, 200, 200, 255});
+            
+            // Simple stem
+            DrawRectangle(flowerX + 6, flowerY + 16, 4, 12, {0, 128, 0, 255});
+        }
+        
+        // Trees with better proportions
+        for (int i = 0; i < 4; i++) {
+            int treeX = startX + (TILE_SIZE * (2 + i * 5));
+            int treeY = startY + (TILE_SIZE * 12);
+            
+            // Tree trunk
+            DrawRectangle(treeX + 8, treeY + 16, 16, TILE_SIZE * 2, {101, 67, 33, 255});
+            DrawRectangleLines(treeX + 8, treeY + 16, 16, TILE_SIZE * 2, {80, 50, 20, 255});
+            
+            // Tree leaves - larger crown
+            DrawRectangle(treeX, treeY, TILE_SIZE, 24, {34, 139, 34, 255});
+            DrawRectangle(treeX + 4, treeY - 8, 24, 16, {50, 205, 50, 255}); // Lighter top
+            DrawRectangleLines(treeX, treeY, TILE_SIZE, 24, {0, 100, 0, 255});
+        }
+        
+        // Grass patches
+        for (int i = 0; i < 12; i++) {
+            int grassX = startX + (TILE_SIZE * (1 + (i * 2) % 22));
+            int grassY = startY + (TILE_SIZE * (6 + (i * 2) % 8));
+            
+            // Small grass clumps
+            DrawRectangle(grassX, grassY, 8, 12, {50, 150, 50, 255});
+            DrawRectangle(grassX + 8, grassY + 2, 6, 8, {60, 160, 60, 255});
+        }
+        
+        // Rocks with some variety
+        for (int i = 0; i < 4; i++) {
+            int rockX = startX + (TILE_SIZE * (6 + i * 3));
+            int rockY = startY + (TILE_SIZE * (8 + i % 3));
+            
+            // Main rock
+            DrawRectangle(rockX, rockY, 20, 16, {128, 128, 128, 255});
+            DrawRectangle(rockX + 4, rockY - 6, 12, 8, {160, 160, 160, 255}); // Lighter top
+            DrawRectangleLines(rockX, rockY, 20, 16, {100, 100, 100, 255});
+        }
+        
+        // Path to exit
+        for (int i = 0; i < 4; i++) {
+            int pathX = startX + (TILE_SIZE * (11 + (i % 2) * 1));
+            int pathY = startY + (TILE_SIZE * (3 + i));
+            
+            DrawRectangle(pathX, pathY, 16, 16, {192, 192, 192, 255});
+            DrawRectangleLines(pathX, pathY, 16, 16, {128, 128, 128, 255});
+        }
+    } else if (roomName == "Chapel") {
+        // Stone altar at the front center
+        int altarX = startX + 8 * TILE_SIZE;
+        int altarY = startY + 2 * TILE_SIZE;
+        DrawRectangle(altarX, altarY, TILE_SIZE * 4, TILE_SIZE * 2, {160, 160, 160, 255});
+        DrawRectangleLines(altarX, altarY, TILE_SIZE * 4, TILE_SIZE * 2, {120, 120, 120, 255});
+        
+        // Cross on altar
+        DrawRectangle(altarX + 56, altarY - 16, 8, 24, {255, 215, 0, 255}); // Vertical
+        DrawRectangle(altarX + 48, altarY - 12, 24, 8, {255, 215, 0, 255}); // Horizontal
+        
+        // Wooden pews (benches)
+        for (int i = 0; i < 3; i++) {
+            int pewX = startX + (4 + i * 5) * TILE_SIZE;
+            int pewY = startY + 8 * TILE_SIZE;
+            DrawRectangle(pewX, pewY, TILE_SIZE * 3, TILE_SIZE, {139, 69, 19, 255});
+            DrawRectangleLines(pewX, pewY, TILE_SIZE * 3, TILE_SIZE, {101, 67, 33, 255});
+            
+            // Pew backs
+            DrawRectangle(pewX, pewY - 12, TILE_SIZE * 3, 12, {139, 69, 19, 255});
+            DrawRectangleLines(pewX, pewY - 12, TILE_SIZE * 3, 12, {101, 67, 33, 255});
+        }
+        
+        // Candle stands
+        for (int i = 0; i < 4; i++) {
+            int candleX = startX + (3 + i * 4) * TILE_SIZE;
+            int candleY = startY + 12 * TILE_SIZE;
+            DrawRectangle(candleX, candleY, 8, 20, {255, 215, 0, 255});
+            DrawRectangleLines(candleX, candleY, 8, 20, {200, 170, 0, 255});
+            // Flame
+            DrawRectangle(candleX + 2, candleY - 8, 4, 8, {255, 150, 0, 255});
+        }
+    } else if (roomName == "Sleeping Quarters") {
+        // Beds along the walls
+        for (int i = 0; i < 4; i++) {
+            int bedX = startX + (2 + (i % 2) * 10) * TILE_SIZE;
+            int bedY = startY + (3 + (i / 2) * 6) * TILE_SIZE;
+            
+            // Bed frame
+            DrawRectangle(bedX, bedY, TILE_SIZE * 4, TILE_SIZE * 2, {139, 69, 19, 255});
+            DrawRectangleLines(bedX, bedY, TILE_SIZE * 4, TILE_SIZE * 2, {101, 67, 33, 255});
+            
+            // Mattress
+            DrawRectangle(bedX + 4, bedY + 4, TILE_SIZE * 4 - 8, TILE_SIZE * 2 - 8, {255, 248, 220, 255});
+            
+            // Pillow
+            DrawRectangle(bedX + 8, bedY + 8, 24, 16, {200, 200, 255, 255});
+            DrawRectangleLines(bedX + 8, bedY + 8, 24, 16, {150, 150, 200, 255});
+        }
+        
+        // Personal belongings (chests)
+        for (int i = 0; i < 4; i++) {
+            int chestX = startX + (3 + (i % 2) * 10) * TILE_SIZE;
+            int chestY = startY + (6 + (i / 2) * 6) * TILE_SIZE;
+            
+            DrawRectangle(chestX, chestY, TILE_SIZE, 16, {160, 82, 45, 255});
+            DrawRectangleLines(chestX, chestY, TILE_SIZE, 16, {120, 60, 30, 255});
+            
+            // Lock
+            DrawRectangle(chestX + 12, chestY + 6, 8, 6, {255, 215, 0, 255});
+        }
+        
+        // Hanging lanterns
+        for (int i = 0; i < 2; i++) {
+            int lanternX = startX + (6 + i * 8) * TILE_SIZE;
+            int lanternY = startY + TILE_SIZE;
+            
+            DrawRectangle(lanternX, lanternY, 16, 20, {255, 215, 0, 255});
+            DrawRectangleLines(lanternX, lanternY, 16, 20, {200, 170, 0, 255});
+            
+            // Light glow
+            DrawRectangle(lanternX + 4, lanternY + 4, 8, 12, {255, 255, 150, 180});
+        }
     }
     
     // Draw monsters
@@ -1406,6 +1694,47 @@ void TextAdventure::DrawRoomLayout(Room* room) {
                 // Ethereal glow effect
                 DrawRectangle(monsterX - 6, monsterY - 2, 28, 44, {150, 150, 255, 30});
             }
+            else if (monsters[i].name == "guardian spirit") {
+                // Guardian spirit - translucent holy figure
+                // Hooded head
+                DrawRectangle(monsterX, monsterY, 16, 12, {255, 255, 255, 180});
+                DrawRectangle(monsterX + 2, monsterY - 4, 12, 8, {200, 200, 255, 180}); // Hood
+                
+                // Glowing eyes
+                DrawRectangle(monsterX + 4, monsterY + 3, 2, 4, {255, 255, 0, 255});
+                DrawRectangle(monsterX + 10, monsterY + 3, 2, 4, {255, 255, 0, 255});
+                
+                // Robed body
+                DrawRectangle(monsterX - 2, monsterY + 12, 20, 20, {240, 240, 255, 180});
+                
+                // Arms in prayer position
+                DrawRectangle(monsterX + 2, monsterY + 14, 4, 12, {255, 255, 255, 180});
+                DrawRectangle(monsterX + 10, monsterY + 14, 4, 12, {255, 255, 255, 180});
+                
+                // Holy aura effect
+                DrawRectangle(monsterX - 4, monsterY - 2, 24, 36, {255, 255, 200, 40});
+            }
+            else if (monsters[i].name == "nightmare wraith") {
+                // Nightmare wraith - dark shadowy creature
+                // Dark smoky head
+                DrawRectangle(monsterX, monsterY, 16, 12, {50, 20, 80, 200});
+                DrawRectangle(monsterX - 2, monsterY + 2, 20, 8, {30, 10, 60, 150}); // Wispy edges
+                
+                // Red glowing eyes
+                DrawRectangle(monsterX + 3, monsterY + 3, 3, 4, {255, 0, 0, 255});
+                DrawRectangle(monsterX + 10, monsterY + 3, 3, 4, {255, 0, 0, 255});
+                
+                // Dark writhing body
+                DrawRectangle(monsterX + 1, monsterY + 12, 14, 18, {40, 20, 70, 200});
+                DrawRectangle(monsterX - 1, monsterY + 16, 18, 12, {30, 10, 50, 150}); // Shadowy tendrils
+                
+                // Clawed arms
+                DrawRectangle(monsterX - 3, monsterY + 14, 6, 10, {50, 20, 80, 180});
+                DrawRectangle(monsterX + 13, monsterY + 14, 6, 10, {50, 20, 80, 180});
+                
+                // Dark aura effect
+                DrawRectangle(monsterX - 6, monsterY - 2, 28, 36, {80, 0, 100, 60});
+            }
             
             // Draw health bar above monster
             int maxHealth = 0;
@@ -1413,6 +1742,8 @@ void TextAdventure::DrawRoomLayout(Room* room) {
             else if (monsters[i].name == "skeleton") maxHealth = 20;
             else if (monsters[i].name == "rat") maxHealth = 8;
             else if (monsters[i].name == "ghost") maxHealth = 25;
+            else if (monsters[i].name == "guardian spirit") maxHealth = 35;
+            else if (monsters[i].name == "nightmare wraith") maxHealth = 30;
             
             if (maxHealth > 0) {
                 float healthPercent = (float)monsters[i].health / (float)maxHealth;
@@ -1813,141 +2144,14 @@ std::vector<std::string> TextAdventure::WrapText(const std::string& text, int ma
 }
 
 void TextAdventure::InitializeDungeon() {
-    rooms.push_back(std::make_unique<Room>("Entrance Hall", 
-        "You stand in a dimly lit stone hall. Ancient torches flicker on the walls, "
-        "casting dancing shadows. The air smells of dust and age."));
+    // Create all rooms using RoomFactory
+    rooms = RoomFactory::CreateAllRooms();
     
-    rooms.push_back(std::make_unique<Room>("Armory", 
-        "This room once held weapons and armor. Rusted sword racks line the walls, "
-        "and broken shields litter the floor."));
+    // Connect the rooms
+    RoomFactory::ConnectRooms(rooms);
     
-    rooms.push_back(std::make_unique<Room>("Treasure Chamber", 
-        "Gold coins and precious gems are scattered across the floor. "
-        "A massive chest sits in the center, slightly ajar."));
-    
-    rooms.push_back(std::make_unique<Room>("Dark Corridor", 
-        "A narrow, winding passage stretches before you. The walls are damp "
-        "and covered in strange moss that glows faintly."));
-    
-    rooms.push_back(std::make_unique<Room>("Monster Lair", 
-        "Bones and debris cover the floor of this foul-smelling chamber. "
-        "Claw marks scar the stone walls."));
-    
-    rooms.push_back(std::make_unique<Room>("Library", 
-        "Ancient books and scrolls fill wooden shelves that reach to the ceiling. "
-        "Dust particles dance in shafts of light from somewhere above."));
-    
-    rooms.push_back(std::make_unique<Room>("Kitchen", 
-        "A medieval kitchen with stone ovens and wooden tables. Cast iron pots "
-        "and cooking utensils hang from hooks on the walls."));
-    
-    rooms.push_back(std::make_unique<Room>("Basement", 
-        "A damp underground storage room filled with wooden barrels and crates. "
-        "The smell of aged wine and preserved foods fills the air."));
-    
-    rooms.push_back(std::make_unique<Room>("Throne Room", 
-        "A grand chamber with a massive stone throne decorated with purple cushions. "
-        "Tapestries depicting ancient battles hang on the walls."));
-    
-    rooms.push_back(std::make_unique<Room>("Garden", 
-        "A small indoor garden with colorful flowers and herbs growing in neat rows. "
-        "Sunlight streams through a glass ceiling above."));
-    
-    // Hidden infirmary room (initially not connected)
-    rooms.push_back(std::make_unique<Room>("Infirmary", 
-        "A small medical room with stone shelves lined with bottles and bandages. "
-        "A wooden cot sits in the corner, and healing herbs hang from the ceiling."));
-    
-    // Hidden outdoor ending room (only accessible after using gem)
-    rooms.push_back(std::make_unique<Room>("Sunlit Meadow", 
-        "You emerge into a beautiful meadow filled with wildflowers and tall grass. "
-        "The warm sun shines down on your face as a gentle breeze carries the scent of freedom. "
-        "Birds chirp in the distance, and you can see rolling hills stretching to the horizon."));
-    
-    // Hidden dark room with mysterious stranger
-    rooms.push_back(std::make_unique<Room>("Dark Room", 
-        "You find yourself in a pitch-black underground chamber. The only light comes from "
-        "glowing crystals embedded in the walls, casting eerie shadows that dance and flicker. "
-        "The air is thick with ancient magic, and you sense you are not alone here."));
-    
-    Room* entrance = rooms[0].get();
-    Room* armory = rooms[1].get();
-    Room* treasure = rooms[2].get();
-    Room* corridor = rooms[3].get();
-    Room* lair = rooms[4].get();
-    Room* library = rooms[5].get();
-    Room* kitchen = rooms[6].get();
-    Room* basement = rooms[7].get();
-    Room* throne = rooms[8].get();
-    Room* garden = rooms[9].get();
-    Room* infirmary = rooms[10].get();
-    Room* meadow = rooms[11].get();
-    Room* darkRoom = rooms[12].get();
-    
-    entrance->SetExit("north", corridor);
-    entrance->SetExit("east", armory);
-    entrance->SetExit("west", library);
-    entrance->SetExit("south", kitchen);
-    
-    armory->SetExit("west", entrance);
-    // armory->SetExit("east", treasure); // Locked until player has key
-    armory->SetExit("south", garden);
-    
-    treasure->SetExit("south", armory);
-    treasure->SetExit("east", throne);
-    
-    corridor->SetExit("south", entrance);
-    corridor->SetExit("north", lair);
-    
-    lair->SetExit("south", corridor);
-    lair->SetExit("west", basement);
-    
-    library->SetExit("east", entrance);
-    library->SetExit("north", basement);
-    
-    kitchen->SetExit("north", entrance);
-    kitchen->SetExit("east", garden);
-    
-    garden->SetExit("west", kitchen);
-    garden->SetExit("north", armory);
-    garden->SetExit("down", darkRoom);
-    
-    darkRoom->SetExit("up", garden);
-    
-    basement->SetExit("south", library);
-    basement->SetExit("east", lair);
-    
-    throne->SetExit("west", treasure);
-    
-    armory->AddItem(Item("sword", "A rusty but serviceable sword", true, ItemType::WEAPON, 5, 0));
-    armory->AddItem(Item("shield", "A dented iron shield", true, ItemType::ARMOR, 0, 3));
-    
-    treasure->AddItem(Item("gold", "A pile of gold coins"));
-    treasure->AddItem(Item("gem", "A sparkling ruby"));
-    
-    library->AddItem(Item("book", "An ancient tome of forgotten lore"));
-    library->AddItem(Item("scroll", "A mysterious scroll with strange symbols"));
-    
-    kitchen->AddItem(Item("pot", "A cast iron cooking pot"));
-    kitchen->AddItem(Item("knife", "A sharp kitchen knife", true, ItemType::WEAPON, 2, 0));
-    
-    basement->AddItem(Item("wine", "A bottle of aged wine"));
-    basement->AddItem(Item("key", "A rusty old key"));
-    
-    throne->AddItem(Item("crown", "A golden crown encrusted with jewels", true, ItemType::ARMOR, 0, 2));
-    
-    garden->AddItem(Item("herbs", "A bundle of healing herbs"));
-    garden->AddItem(Item("seeds", "A pouch of rare flower seeds"));
-    
-    // Infirmary items
-    infirmary->AddItem(Item("plaster", "A magical healing plaster that restores 20 health"));
-    
-    lair->AddMonster(Monster("goblin", "A small, green creature with sharp teeth", 15, 5, 8.0f, 10.0f));
-    corridor->AddMonster(Monster("skeleton", "The animated bones of a long-dead warrior", 20, 8, 15.0f, 8.0f));
-    basement->AddMonster(Monster("rat", "A giant sewer rat with glowing red eyes", 8, 3, 6.0f, 12.0f));
-    throne->AddMonster(Monster("ghost", "The spirit of an ancient king", 50, 12, 18.0f, 6.0f));
-    
-    currentRoom = entrance;
+    // Set the starting room to entrance hall (first room)
+    currentRoom = rooms[0].get();
     currentRoom->SetVisited(true);
 }
 
@@ -2292,6 +2496,70 @@ void TextAdventure::UseItem(const std::string& itemName) {
         }
     } else if (itemName == "gold" && currentRoom->GetName() != "Dark Room") {
         AddMessage("The gold feels heavy in your hands, but there's nothing to spend it on here.");
+    } else if (itemName == "note" && !noteRead) {
+        AddMessage("You carefully unfold the ancient, weathered parchment and read:");
+        AddMessage("");
+        AddMessage("'To whoever finds this cursed record...'");
+        AddMessage("'I have done something terrible. The Ancient Staff of [text torn]'");
+        AddMessage("'...possessed unimaginable power. In my hubris, I tried to control it.'");
+        AddMessage("'The magic was too strong. It nearly destroyed everything.'");
+        AddMessage("");
+        AddMessage("'I have broken the staff into four parts and hidden them:'");
+        AddMessage("'- The Staff itself, where meals are prepared'");
+        AddMessage("'- The Diamond, in a place of prayer and reverence'");
+        AddMessage("'- The Emerald, where wine sleeps in darkness'");
+        AddMessage("'- The Opal, where the weary rest their heads'");
+        AddMessage("");
+        AddMessage("'I have sealed these places with guardians and creatures.'");
+        AddMessage("'The staff must never be whole again, for its true power is...'");
+        AddMessage("[The rest of the note is torn and unreadable]");
+        AddMessage("");
+        AddMessage("You feel a strange energy pulse through the dungeon...");
+        
+        noteRead = true;
+        
+        // Reveal the Chapel (east of Sunlit Meadow)
+        Room* sunlitMeadow = rooms[11].get();
+        Room* chapel = rooms[13].get();
+        sunlitMeadow->SetExit("east", chapel);
+        chapel->SetExit("west", sunlitMeadow);
+        
+        // Reveal the Sleeping Quarters (north of Throne Room)
+        Room* throneRoom = rooms[8].get();
+        Room* sleepingQuarters = rooms[14].get();
+        throneRoom->SetExit("north", sleepingQuarters);
+        sleepingQuarters->SetExit("south", throneRoom);
+        
+        // Add hidden items to rooms
+        Room* kitchen = rooms[6].get();
+        kitchen->AddItem(Item("staff", "An ancient wooden staff, carved with mysterious runes. Its wood is dark with age.", true, ItemType::MISC, 0, 0));
+        
+        Room* basement = rooms[7].get();
+        basement->AddItem(Item("emerald", "A brilliant green emerald that seems to glow with inner light.", true, ItemType::MISC, 0, 0));
+        
+        chapel->AddItem(Item("diamond", "A flawless diamond that sparkles with pure, radiant light.", true, ItemType::MISC, 0, 0));
+        
+        sleepingQuarters->AddItem(Item("opal", "A shimmering opal that displays all colors of the rainbow.", true, ItemType::MISC, 0, 0));
+        
+        AddMessage("You hear distant rumbling and shifting sounds throughout the dungeon...");
+        AddMessage("New paths have opened!");
+    } else if (itemName == "?????" && staffComplete && !gameEnding) {
+        AddMessage("You raise the Ancient Staff of Power high above your head...");
+        AddMessage("The gems in the staff head begin to glow with intense magical energy!");
+        AddMessage("Suddenly, you hear a distant whistling sound from far above...");
+        AddMessage("The whistling grows louder and more intense...");
+        AddMessage("Something is dropping from the sky!");
+        AddMessage("");
+        AddMessage("The staff's power has torn a rift in the heavens themselves!");
+        AddMessage("A massive asteroid hurtles through the atmosphere toward the earth!");
+        AddMessage("You realize with horror what the staff's true power was...");
+        AddMessage("");
+        AddMessage("IMPACT!");
+        AddMessage("");
+        AddMessage("Type 'continue' to continue...");
+        
+        gameEnding = true;
+        waitingForContinue = true;
     } else {
         AddMessage("You can't use the " + itemName + ".");
     }
@@ -2449,7 +2717,11 @@ void TextAdventure::DrawDungeonMap() {
         {startX + roomWidth * 4, startY + roomHeight * 3, "Sunlit Meadow", gemUsed},
         
         // Hidden dark room - below garden
-        {startX + roomWidth * 2, startY + roomHeight * 4, "Dark Room", true}
+        {startX + roomWidth * 2, startY + roomHeight * 4, "Dark Room", true},
+        
+        // Hidden Chapel and Sleeping Quarters (only show if note is read)
+        {startX + roomWidth * 5, startY + roomHeight * 3, "Chapel", noteRead}, // East of Sunlit Meadow
+        {startX + roomWidth * 4, startY - roomHeight, "Sleeping Quarters", noteRead} // North of Throne Room
     };
     
     // Draw rooms
@@ -2476,6 +2748,23 @@ void TextAdventure::DrawDungeonMap() {
             } else if (room->IsVisited()) {
                 roomColor = {70, 70, 80, 255}; // Visited room
                 textColor = {200, 200, 200, 255};
+            }
+            
+            // Color rooms by their staff parts (only after note is read)
+            if (noteRead) {
+                if (roomPos.name == "Kitchen" && !hasStaff) {
+                    roomColor = {139, 69, 19, 255}; // Brown for wooden staff
+                    textColor = {255, 220, 180, 255};
+                } else if (roomPos.name == "Chapel" && !hasDiamond) {
+                    roomColor = {200, 200, 255, 255}; // Diamond white/blue
+                    textColor = {255, 255, 255, 255};
+                } else if (roomPos.name == "Basement" && !hasEmerald) {
+                    roomColor = {50, 200, 50, 255}; // Emerald green
+                    textColor = {150, 255, 150, 255};
+                } else if (roomPos.name == "Sleeping Quarters" && !hasOpal) {
+                    roomColor = {255, 150, 200, 255}; // Opal rainbow (pink tint)
+                    textColor = {255, 255, 255, 255};
+                }
             }
         }
         
@@ -2567,6 +2856,12 @@ void TextAdventure::DrawDungeonMap() {
         connections.push_back({"Throne Room", "Sunlit Meadow"});
     }
     
+    // Add Chapel and Sleeping Quarters connections if note is read
+    if (noteRead) {
+        connections.push_back({"Sunlit Meadow", "Chapel"});
+        connections.push_back({"Throne Room", "Sleeping Quarters"});
+    }
+    
     // Draw connection lines
     for (const auto& connection : connections) {
         auto room1Pos = std::find_if(roomPositions.begin(), roomPositions.end(),
@@ -2606,7 +2901,7 @@ void TextAdventure::TeleportToRoom(const std::string& roomName) {
     }
     
     if (targetRoom && targetRoom->IsVisited()) {
-        currentRoom = targetRoom;
+        currentRoom = targetRoom;   
         playerRoomX = 12.0f;
         playerRoomY = 9.0f;
         inMapView = false;

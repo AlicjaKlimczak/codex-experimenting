@@ -1,6 +1,7 @@
 #pragma once
 #include "raylib.h"
 #include "room.h"
+#include "room_factory.h"
 #include <string>
 #include <vector>
 #include <memory>
@@ -78,6 +79,19 @@ private:
     bool gemUsed;
     bool hasTeleport;
     bool strangeMet;
+    
+    // Staff quest variables
+    bool noteRead;
+    bool hasStaff;
+    bool hasDiamond;
+    bool hasEmerald;
+    bool hasOpal;
+    bool staffComplete;
+    bool gameEnding;
+    bool shouldQuit;
+    bool waitingForContinue;
+    int endingPhase; // 0=normal, 1=white, 2=yellow, 3=red, 4=black, 5=gameover
+    float endingTimer;
     
     void DrawCurrentRoom();
     void DrawPlayer();
